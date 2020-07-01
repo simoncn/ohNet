@@ -808,6 +808,26 @@ void DviSessionUpnp::Subscribe()
                       PBUF(callback),
                       PBUF(iReaderRequest->Uri()));
     }
+
+    // add check to fix CallStranger vulnerability (CVE-2020-12695)
+    // The UPnP Device Architecture specification now requires that a subscription request
+    // containing a delivery URL not on the same network segment as the fully qualified
+    // event subscription URL shall not be accepted (updated 17 April 2020).
+    NetworkAdapterList& adapterList = iDvStack.Env().NetworkAdapterList();
+    std::vector<NetworkAdapter*>* nifList = adapterList.CreateNetworkAdapterList();
+    NetworkAdapter* subnet = NULL;
+    for (TUint i=0; i<nifList->size(); i++) {
+        NetworkAdapter* adapter = (*nifList)[i];
+        if (adapter->Address() == iInterface) {
+            subnet = adapter;
+            break;
+        }
+    }
+    NetworkAdapterList::DestroyNetworkAdapterList(nifList);
+    if (subnet != NULL && (iHeaderCallback.Endpoint().Address() & subnet->Mask()) != subnet->Subnet()) { 
+        Error(HttpStatus::kForbidden);
+    }
+
     if (iHeaderSid.Received()) {
         try {
             Renew();
